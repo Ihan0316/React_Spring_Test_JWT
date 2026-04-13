@@ -9,6 +9,7 @@ import com.busanit501.api5012.util.JWTUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.boot.autoconfigure.security.servlet.PathRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -25,7 +26,8 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Log4j2
 @Configuration
@@ -39,6 +41,18 @@ public class CustomSecurityConfig {
     //추가 1-1
     private final APIUserDetailsService apiUserDetailsService;
     private final JWTUtil jwtUtil;
+
+    @Value("#{'${app.cors.allowed-origins:http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173}'.split(',')}")
+    private List<String> allowedOrigins;
+
+    @Value("#{'${app.cors.allowed-methods:HEAD,GET,POST,PUT,PATCH,DELETE,OPTIONS}'.split(',')}")
+    private List<String> allowedMethods;
+
+    @Value("#{'${app.cors.allowed-headers:Authorization,Cache-Control,Content-Type}'.split(',')}")
+    private List<String> allowedHeaders;
+
+    @Value("${app.cors.allow-credentials:false}")
+    private boolean allowCredentials;
 
     @Bean
     public BCryptPasswordEncoder passwordEncoder() {
@@ -118,16 +132,28 @@ public class CustomSecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
+        List<String> normalizedOrigins = normalizeValues(allowedOrigins);
 
-        // 모두 허용 , 리액트 예, Nginx, http://localhost:80
-        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
-//        configuration.setAllowedOriginPatterns(Arrays.asList("http://localhost:80"));
-        configuration.setAllowedMethods(Arrays.asList("HEAD", "GET", "POST", "PUT", "DELETE"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Cache-Control", "Content-Type"));
-        configuration.setAllowCredentials(true);
+        if (normalizedOrigins.contains("*")) {
+            configuration.setAllowedOriginPatterns(List.of("*"));
+            configuration.setAllowCredentials(false);
+        } else {
+            configuration.setAllowedOrigins(normalizedOrigins);
+            configuration.setAllowCredentials(allowCredentials);
+        }
+
+        configuration.setAllowedMethods(normalizeValues(allowedMethods));
+        configuration.setAllowedHeaders(normalizeValues(allowedHeaders));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    private List<String> normalizeValues(List<String> values) {
+        return values.stream()
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .collect(Collectors.toList());
     }
 }
